@@ -23,8 +23,8 @@ from .detection.causal_intervention import CausalInterventionAnalyzer
 
 # Utilities
 from .utils.model_utils import ModelWrapper, extract_activations
-from .utils.visualization import DetectionVisualizer
-from .utils.metrics import compute_detection_metrics
+# from .utils.visualization import DetectionVisualizer  # TODO: implement visualization module
+# from .utils.metrics import compute_detection_metrics  # TODO: implement metrics module
 
 # Configuration
 from .config import DetectionConfig, create_default_config
@@ -46,8 +46,8 @@ __all__ = [
     # Utilities
     "ModelWrapper",
     "extract_activations",
-    "DetectionVisualizer",
-    "compute_detection_metrics",
+    # "DetectionVisualizer",  # TODO: implement visualization module
+    # "compute_detection_metrics",  # TODO: implement metrics module
     
     # Configuration
     "DetectionConfig",

@@ -1,0 +1,13 @@
+LICENSE
+README.md
+setup.py
+src/mesa_optimizer_detection/__init__.py
+src/mesa_optimizer_detection/cli.py
+src/mesa_optimizer_detection/config.py
+src/mesa_optimizer_detection.egg-info/PKG-INFO
+src/mesa_optimizer_detection.egg-info/SOURCES.txt
+src/mesa_optimizer_detection.egg-info/dependency_links.txt
+src/mesa_optimizer_detection.egg-info/entry_points.txt
+src/mesa_optimizer_detection.egg-info/requires.txt
+src/mesa_optimizer_detection.egg-info/top_level.txt
+tests/test_detection.py

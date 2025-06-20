@@ -1,0 +1,2 @@
+[console_scripts]
+mesa-detect = mesa_optimizer_detection.cli:main
