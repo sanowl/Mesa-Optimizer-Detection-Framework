@@ -102,16 +102,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
 
-## Citation
 
-```bibtex
-@software{mesa_optimizer_detection_framework,
-  title={Mesa-Optimizer Detection Framework},
-  author={[San hasim]},
-  year={2025},
-  url={https://github.com/yourusername/Mesa-Optimizer-Detection-Framework}
-}
-```
 
 ## Acknowledgments
 
