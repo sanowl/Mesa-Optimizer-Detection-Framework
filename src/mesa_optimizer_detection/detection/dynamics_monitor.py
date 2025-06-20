@@ -50,7 +50,7 @@ class OptimizationDynamicsMonitor:
     
     def analyze(self, training_step: int) -> DynamicsAnalysisResult:
         """
-        Analyze current optimization dynamics.
+         Analyze current optimization dynamics.
         
         Args:
             training_step: Current training step
