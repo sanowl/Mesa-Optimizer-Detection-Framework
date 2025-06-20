@@ -10,4 +10,6 @@ src/mesa_optimizer_detection.egg-info/dependency_links.txt
 src/mesa_optimizer_detection.egg-info/entry_points.txt
 src/mesa_optimizer_detection.egg-info/requires.txt
 src/mesa_optimizer_detection.egg-info/top_level.txt
+src/mesa_optimizer_detection/visualization/__init__.py
+src/mesa_optimizer_detection/visualization/dashboard.py
 tests/test_detection.py
