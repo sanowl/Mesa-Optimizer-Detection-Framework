@@ -27,7 +27,13 @@ from .utils.model_utils import ModelWrapper, extract_activations
 # from .utils.metrics import compute_detection_metrics  # TODO: implement metrics module
 
 # Configuration
-from .config import DetectionConfig, create_default_config
+from .config import (
+    DetectionConfig, 
+    create_default_config, 
+    create_conservative_config,
+    create_permissive_config,
+    create_research_config
+)
 
 __all__ = [
     # Core
@@ -52,4 +58,7 @@ __all__ = [
     # Configuration
     "DetectionConfig",
     "create_default_config",
+    "create_conservative_config",
+    "create_permissive_config", 
+    "create_research_config",
 ] 

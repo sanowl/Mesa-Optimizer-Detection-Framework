@@ -44,6 +44,10 @@ class ModelWrapper:
         inputs = inputs.to(self.device)
         return self.model(inputs, **kwargs)
     
+    def __call__(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Make ModelWrapper callable."""
+        return self.forward(inputs, **kwargs)
+    
     def register_activation_hook(
         self,
         layer_name: str,
@@ -75,8 +79,18 @@ class ModelWrapper:
                 return module
         return None
     
-    def get_activations(self, clear_after_get: bool = True) -> Dict[str, torch.Tensor]:
-        """Get stored activations and optionally clear them."""
+    def get_activations(
+        self, 
+        inputs: Optional[torch.Tensor] = None,
+        layer_indices: Optional[List[int]] = None,
+        clear_after_get: bool = True
+    ) -> Dict[str, torch.Tensor]:
+        """Get stored activations or extract new ones."""
+        if inputs is not None and layer_indices is not None:
+            # Extract activations for specific layers
+            return extract_activations(self, inputs, layer_indices)
+        
+        # Return stored activations
         activations = self.stored_activations.copy()
         if clear_after_get:
             self.stored_activations.clear()
@@ -125,8 +139,9 @@ def extract_activations(
     all_layer_names = model_wrapper.get_layer_names()
     
     if layer_names is None:
-        # Use layer indices to get names
-        layer_names = [all_layer_names[i] for i in layer_indices if i < len(all_layer_names)]
+        # Use layer indices to get names, filtering out empty names
+        valid_layer_names = [name for name in all_layer_names if name != '']
+        layer_names = [valid_layer_names[i] for i in layer_indices if i < len(valid_layer_names)]
     
     # Register hooks for specified layers
     for layer_name in layer_names:

@@ -125,15 +125,17 @@ def test_individual_analyzers():
     
     try:
         from mesa_optimizer_detection.detection.activation_analyzer import ActivationPatternAnalyzer
+        from mesa_optimizer_detection import ModelWrapper
         
         model = SimpleTestModel()
+        model_wrapper = ModelWrapper(model)
         config = create_default_config()
         
         # Test activation analyzer
         analyzer = ActivationPatternAnalyzer(
-            model=model,
+            model=model_wrapper,
             layer_indices=[1, 3],
-            config=config
+            config=config.activation_config
         )
         
         test_input = torch.randn(4, 10)
