@@ -46,7 +46,8 @@ class BehavioralConfig:
     context_sensitivity_threshold: float = 0.3
     num_test_contexts: int = 5
     max_response_length: int = 200
-    temperature_range: tuple = (0.1, 1.5)
+    temperature_min: float = 0.1
+    temperature_max: float = 1.5
 
 
 @dataclass 
@@ -57,6 +58,7 @@ class DynamicsConfig:
     phase_transition_sensitivity: float = 0.2
     loss_smoothing_window: int = 10
     monitor_frequency: int = 100
+    history_window: int = 1000
 
 
 @dataclass

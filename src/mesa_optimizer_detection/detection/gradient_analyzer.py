@@ -128,25 +128,29 @@ class GradientAnalyzer:
         self.model.model.zero_grad()
         
         # Forward pass
+        outputs = self.model.forward(input_batch)
+        
         if target_batch is not None:
             # Supervised learning case
-            outputs = self.model.forward(input_batch)
             if hasattr(self.model.model, 'compute_loss'):
                 loss = self.model.model.compute_loss(outputs, target_batch)
             else:
                 # Default cross-entropy loss
                 loss = F.cross_entropy(outputs, target_batch)
         else:
-            # Unsupervised case - use reconstruction or generation loss
-            outputs = self.model.forward(input_batch)
+            # Unsupervised case - create appropriate targets based on output shape
             if hasattr(self.model.model, 'compute_loss'):
                 loss = self.model.model.compute_loss(outputs, input_batch)
             else:
-                # Default: negative log-likelihood for language modeling
-                loss = F.cross_entropy(
-                    outputs.view(-1, outputs.size(-1)), 
-                    input_batch.view(-1)
-                )
+                # Create targets that match the output shape
+                if outputs.dim() >= 2:
+                    # Classification-like output
+                    targets = torch.randint(0, outputs.size(-1), (outputs.size(0),), device=outputs.device)
+                    loss = F.cross_entropy(outputs, targets)
+                else:
+                    # Regression-like output - use MSE with zero targets
+                    targets = torch.zeros_like(outputs)
+                    loss = F.mse_loss(outputs, targets)
         
         # Backward pass
         loss.backward()
@@ -305,10 +309,15 @@ class GradientAnalyzer:
         if target_batch is not None:
             loss = F.cross_entropy(outputs, target_batch)
         else:
-            loss = F.cross_entropy(
-                outputs.view(-1, outputs.size(-1)),
-                input_batch.view(-1)
-            )
+            # Create targets that match the output shape
+            if outputs.dim() >= 2:
+                # Classification-like output
+                targets = torch.randint(0, outputs.size(-1), (outputs.size(0),), device=outputs.device)
+                loss = F.cross_entropy(outputs, targets)
+            else:
+                # Regression-like output - use MSE with zero targets
+                targets = torch.zeros_like(outputs)
+                loss = F.mse_loss(outputs, targets)
         
         # Compute gradients
         grads = torch.autograd.grad(loss, params, create_graph=True)

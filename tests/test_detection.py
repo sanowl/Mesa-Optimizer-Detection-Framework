@@ -298,6 +298,9 @@ class TestMesaOptimizerDetector:
         mock_result = Mock()
         mock_result.risk_score = 0.3
         mock_result.confidence = 0.7
+        mock_result.planning_score = 0.5
+        mock_result.goal_directedness = 0.4
+        mock_result.optimization_score = 0.2
         
         with patch.object(detector.analyzers['activation'], 'analyze') as mock_analyze:
             mock_analyze.return_value = mock_result
