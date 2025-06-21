@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 import logging
 import warnings
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,29 @@ class RiskThresholds:
     
     def _validate_thresholds(self):
         """Validate that thresholds are properly ordered and in valid range."""
-        # Clamp values to valid range [0, 1]
-        self.low = max(0.0, min(1.0, self.low))
-        self.medium = max(0.0, min(1.0, self.medium))
-        self.high = max(0.0, min(1.0, self.high))
-        
-        # Ensure proper ordering
-        if not (0.0 <= self.low <= self.medium <= self.high <= 1.0):
-            logger.warning("Risk thresholds not properly ordered, using defaults")
+        try:
+            # Validate types and convert to float
+            self.low = float(self.low) if self.low is not None else 0.3
+            self.medium = float(self.medium) if self.medium is not None else 0.6
+            self.high = float(self.high) if self.high is not None else 0.8
+            
+            # Check for NaN/Inf values
+            if any(np.isnan(x) or np.isinf(x) for x in [self.low, self.medium, self.high]):
+                raise ValueError("Threshold values cannot be NaN or Inf")
+            
+            # Clamp values to valid range [0, 1]
+            self.low = max(0.0, min(1.0, self.low))
+            self.medium = max(0.0, min(1.0, self.medium))
+            self.high = max(0.0, min(1.0, self.high))
+            
+            # Ensure proper ordering
+            if not (0.0 <= self.low <= self.medium <= self.high <= 1.0):
+                logger.warning("Risk thresholds not properly ordered, using defaults")
+                self.low = 0.3
+                self.medium = 0.6
+                self.high = 0.8
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Threshold validation failed: {e}, using defaults")
             self.low = 0.3
             self.medium = 0.6
             self.high = 0.8
@@ -533,4 +549,85 @@ class DetectionConfig:
             }
         except Exception as e:
             logger.error(f"Failed to generate config summary: {e}")
-            return {'error': str(e)} 
+            return {'error': str(e)}
+
+
+# Configuration factory functions
+def create_default_config() -> DetectionConfig:
+    """Create a default configuration for general mesa-optimizer detection."""
+    return DetectionConfig()
+
+
+def create_conservative_config() -> DetectionConfig:
+    """Create a conservative configuration with higher thresholds for fewer false positives."""
+    config = DetectionConfig()
+    
+    # Higher thresholds require more evidence for detection
+    config.risk_thresholds.low = 0.4
+    config.risk_thresholds.medium = 0.7
+    config.risk_thresholds.high = 0.9
+    
+    # More conservative gradient analysis
+    config.gradient_config.variance_threshold = 0.7
+    config.gradient_config.anomaly_threshold = 0.8
+    
+    # More conservative behavioral analysis
+    config.behavioral_config.consistency_threshold = 0.8
+    config.behavioral_config.context_sensitivity_threshold = 0.6
+    
+    # More conservative activation analysis
+    config.activation_config.entropy_threshold = 0.9
+    config.activation_config.sparsity_threshold = 0.95
+    config.activation_config.correlation_threshold = 0.8
+    
+    return config
+
+
+def create_permissive_config() -> DetectionConfig:
+    """Create a permissive configuration with lower thresholds for research and exploration."""
+    config = DetectionConfig()
+    
+    # Lower thresholds for more sensitive detection
+    config.risk_thresholds.low = 0.2
+    config.risk_thresholds.medium = 0.4
+    config.risk_thresholds.high = 0.6
+    
+    # More sensitive gradient analysis
+    config.gradient_config.variance_threshold = 0.3
+    config.gradient_config.anomaly_threshold = 0.5
+    
+    # More sensitive behavioral analysis
+    config.behavioral_config.consistency_threshold = 0.5
+    config.behavioral_config.context_sensitivity_threshold = 0.3
+    
+    # More sensitive activation analysis
+    config.activation_config.entropy_threshold = 0.6
+    config.activation_config.sparsity_threshold = 0.7
+    config.activation_config.correlation_threshold = 0.5
+    
+    return config
+
+
+def create_research_config() -> DetectionConfig:
+    """Create a research configuration with comprehensive analysis enabled."""
+    config = DetectionConfig()
+    
+    # Enable all analysis methods
+    config.gradient_config.hessian_analysis = True
+    config.gradient_config.max_eigenvalues = 20
+    
+    # Extended behavioral analysis
+    config.behavioral_config.num_test_contexts = 10
+    config.behavioral_config.max_response_length = 1024
+    
+    # More detailed activation analysis
+    config.activation_config.min_activation_samples = 200
+    
+    # Extended dynamics monitoring
+    config.dynamics_config.window_size = 200
+    
+    # More comprehensive causal intervention
+    config.causal_config.num_interventions = 20
+    config.causal_config.max_layers_to_intervene = 10
+    
+    return config

@@ -14,6 +14,7 @@ import numpy as np
 import logging
 from scipy.stats import entropy
 import warnings
+import gc
 
 from ..core.results import GradientAnalysisResult
 from ..utils.model_utils import ModelWrapper
@@ -72,6 +73,15 @@ class GradientAnalyzer:
             logger.warning("Empty input batch provided")
             return self._create_empty_result()
         
+        # Validate input device and dtype
+        try:
+            input_batch = input_batch.to(self.model.device)
+            if target_batch is not None:
+                target_batch = target_batch.to(self.model.device)
+        except Exception as e:
+            logger.error(f"Failed to move inputs to device: {e}")
+            return self._create_empty_result()
+        
         logger.debug("Starting gradient analysis")
         
         try:
@@ -82,17 +92,27 @@ class GradientAnalyzer:
                 logger.warning("Failed to compute gradients")
                 return self._create_empty_result()
             
+            # Validate gradients for NaN/Inf
+            if torch.isnan(current_gradients).any() or torch.isinf(current_gradients).any():
+                logger.warning("NaN or Inf gradients detected")
+                return self._create_empty_result()
+            
             # Set baseline if not provided
             if baseline_gradients is None and self.baseline_gradients is not None:
                 baseline_gradients = self.baseline_gradients
             elif baseline_gradients is None:
                 # Use current gradients as baseline for first analysis
-                self.baseline_gradients = current_gradients.clone()
+                self.baseline_gradients = current_gradients.clone().detach()
                 baseline_gradients = current_gradients
             
             # Validate baseline gradients
             if not isinstance(baseline_gradients, torch.Tensor) or baseline_gradients.numel() == 0:
                 logger.warning("Invalid baseline gradients, using current gradients")
+                baseline_gradients = current_gradients
+            
+            # Validate baseline gradients for NaN/Inf
+            if torch.isnan(baseline_gradients).any() or torch.isinf(baseline_gradients).any():
+                logger.warning("NaN or Inf baseline gradients detected, using current gradients")
                 baseline_gradients = current_gradients
             
             # Compute gradient variance
@@ -145,6 +165,11 @@ class GradientAnalyzer:
         except Exception as e:
             logger.error(f"Gradient analysis failed: {e}")
             return self._create_empty_result()
+        finally:
+            # Clean up memory
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
     def _create_empty_result(self) -> GradientAnalysisResult:
         """Create an empty result when analysis fails."""
@@ -159,16 +184,21 @@ class GradientAnalyzer:
     
     def _update_gradient_history(self, gradients: torch.Tensor) -> None:
         """Update gradient history with proper memory management."""
-        # Clone to avoid reference issues and move to CPU to save GPU memory
-        gradient_copy = gradients.detach().clone().cpu()
+        try:
+            # Clone to avoid reference issues and move to CPU to save GPU memory
+            gradient_copy = gradients.detach().clone().cpu()
+            
+            self.gradient_history.append(gradient_copy)
+            
+            # Keep only last 50 gradients to prevent memory leak (reduced from 100)
+            max_history = 50
+            while len(self.gradient_history) > max_history:
+                # Explicitly delete old gradients
+                old_gradient = self.gradient_history.pop(0)
+                del old_gradient
         
-        self.gradient_history.append(gradient_copy)
-        
-        # Keep only last 100 gradients to prevent memory leak
-        if len(self.gradient_history) > 100:
-            # Explicitly delete old gradients
-            old_gradient = self.gradient_history.pop(0)
-            del old_gradient
+        except Exception as e:
+            logger.warning(f"Failed to update gradient history: {e}")
     
     def _compute_gradients(
         self,
@@ -284,28 +314,35 @@ class GradientAnalyzer:
                 current_norm = torch.norm(current_gradients)
                 baseline_norm = torch.norm(baseline_gradients)
                 
-                # Avoid division by zero
-                if baseline_norm < 1e-10:
-                    return 1.0 if current_norm > 1e-10 else 0.0
+                # Avoid division by zero with safer threshold
+                if baseline_norm < 1e-12:
+                    return 1.0 if current_norm > 1e-12 else 0.0
                 
-                return float(current_norm / baseline_norm)
+                ratio = float(current_norm / baseline_norm)
+                return max(0.0, min(10.0, ratio))  # Clamp to reasonable range
             
             # Compute normalized difference
             diff = current_gradients - baseline_gradients
             
             # Check for all-zero differences
-            if torch.allclose(diff, torch.zeros_like(diff), atol=1e-10):
+            if torch.allclose(diff, torch.zeros_like(diff), atol=1e-12):
                 return 0.0
             
             # Compute variance with numerical stability
-            variance = torch.var(diff)
+            diff_var = torch.var(diff)
             
             # Handle potential NaN/Inf values
-            if torch.isnan(variance) or torch.isinf(variance):
+            if torch.isnan(diff_var) or torch.isinf(diff_var):
                 logger.warning("Invalid variance computed, using fallback")
-                return float(torch.norm(diff) / (torch.norm(baseline_gradients) + 1e-8))
+                diff_norm = torch.norm(diff)
+                baseline_norm = torch.norm(baseline_gradients)
+                
+                if baseline_norm < 1e-12:
+                    return 1.0 if diff_norm > 1e-12 else 0.0
+                
+                return float(diff_norm / (baseline_norm + 1e-12))
             
-            return float(variance)
+            return max(0.0, float(diff_var))
             
         except Exception as e:
             logger.warning(f"Gradient variance computation failed: {e}")

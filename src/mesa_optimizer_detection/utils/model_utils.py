@@ -12,6 +12,8 @@ import logging
 from collections import defaultdict
 import warnings
 import weakref
+import threading
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ class ModelWrapper:
         self.activation_hooks = {}
         self.stored_activations = {}
         self._hook_handles = {}
+        self._lock = threading.Lock()  # Thread safety
         
         logger.info(f"ModelWrapper initialized with device: {self.device}")
     
@@ -87,11 +90,17 @@ class ModelWrapper:
         layer = self._get_layer_by_name(layer_name)
         if layer is not None:
             try:
-                handle = layer.register_forward_hook(hook_fn)
-                self.activation_hooks[layer_name] = hook_fn
-                self._hook_handles[layer_name] = handle
-                logger.debug(f"Registered hook for layer: {layer_name}")
-                return True
+                with self._lock:  # Thread-safe hook registration
+                    # Check if hook already exists
+                    if layer_name in self._hook_handles:
+                        logger.debug(f"Hook already exists for layer: {layer_name}")
+                        return True
+                    
+                    handle = layer.register_forward_hook(hook_fn)
+                    self.activation_hooks[layer_name] = hook_fn
+                    self._hook_handles[layer_name] = handle
+                    logger.debug(f"Registered hook for layer: {layer_name}")
+                    return True
             except Exception as e:
                 logger.warning(f"Failed to register hook for {layer_name}: {e}")
                 return False
@@ -237,11 +246,16 @@ def extract_activations(
             invalid_indices = []
             
             for i in layer_indices:
-                if isinstance(i, int) and 0 <= i < len(all_layer_names):
-                    layer_name = all_layer_names[i]
-                    if layer_name:  # Filter out empty names
-                        valid_layer_names.append(layer_name)
-                else:
+                try:
+                    idx = int(i)  # Safe conversion
+                    if 0 <= idx < len(all_layer_names):
+                        layer_name = all_layer_names[idx]
+                        if layer_name:  # Filter out empty names
+                            valid_layer_names.append(layer_name)
+                    else:
+                        invalid_indices.append(i)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid layer index type: {i} ({type(i)})")
                     invalid_indices.append(i)
             
             if invalid_indices:

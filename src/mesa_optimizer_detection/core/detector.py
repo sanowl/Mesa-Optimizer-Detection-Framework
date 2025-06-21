@@ -66,17 +66,25 @@ class MesaOptimizerDetector:
         self.config = config or DetectionConfig()
         
         # Validate and set layer indices
-        self.layer_indices = self._validate_layer_indices(layer_indices)
+        try:
+            self.layer_indices = self._validate_layer_indices(layer_indices)
+        except Exception as e:
+            logger.warning(f"Layer index validation failed: {e}")
+            self.layer_indices = [1, 2, 3]  # Safe fallback
         
         # Validate and set detection methods
         available_methods = ['gradient', 'activation', 'behavioral', 'dynamics', 'causal']
         if detection_methods is None:
             self.detection_methods = available_methods
         else:
-            invalid_methods = [m for m in detection_methods if m not in available_methods]
-            if invalid_methods:
-                logger.warning(f"Invalid detection methods: {invalid_methods}. Available: {available_methods}")
-            self.detection_methods = [m for m in detection_methods if m in available_methods]
+            if not isinstance(detection_methods, list):
+                logger.warning(f"Detection methods must be a list, got {type(detection_methods)}")
+                self.detection_methods = available_methods
+            else:
+                invalid_methods = [m for m in detection_methods if m not in available_methods]
+                if invalid_methods:
+                    logger.warning(f"Invalid detection methods: {invalid_methods}. Available: {available_methods}")
+                self.detection_methods = [m for m in detection_methods if m in available_methods]
         
         if not self.detection_methods:
             logger.warning("No valid detection methods specified, using all available methods")

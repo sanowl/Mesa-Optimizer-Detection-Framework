@@ -12,6 +12,7 @@ import numpy as np
 import logging
 from collections import defaultdict
 import warnings
+import gc
 
 from ..core.results import BehavioralAnalysisResult
 from ..utils.model_utils import ModelWrapper
@@ -59,17 +60,25 @@ class BehavioralConsistencyAnalyzer:
             logger.warning("No evaluation contexts provided")
             return self._create_empty_result()
         
+        if not isinstance(evaluation_contexts, list):
+            logger.error(f"evaluation_contexts must be a list, got {type(evaluation_contexts)}")
+            return self._create_empty_result()
+        
         logger.debug("Starting behavioral consistency analysis")
         
         try:
             # Validate contexts
             validated_contexts = self._validate_contexts(evaluation_contexts)
             
+            if not validated_contexts:
+                logger.warning("No valid contexts after validation")
+                return self._create_empty_result()
+            
             # Generate responses for each context
             responses = self._generate_responses(validated_contexts)
             
             # Skip analysis if we have insufficient valid responses
-            valid_responses = {k: v for k, v in responses.items() if 'error' not in v}
+            valid_responses = {k: v for k, v in responses.items() if 'error' not in v and 'response' in v and v['response'] is not None}
             if len(valid_responses) < 2:
                 logger.warning("Insufficient valid responses for meaningful analysis")
                 return self._create_empty_result()
@@ -106,9 +115,16 @@ class BehavioralConsistencyAnalyzer:
         except Exception as e:
             logger.error(f"Behavioral analysis failed: {e}")
             return self._create_empty_result()
+        finally:
+            # Clean up memory
+            gc.collect()
     
     def _validate_contexts(self, contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Validate and sanitize evaluation contexts."""
+        if not isinstance(contexts, list):
+            logger.error("Contexts must be a list")
+            return []
+        
         validated = []
         
         for i, context in enumerate(contexts):
@@ -133,15 +149,23 @@ class BehavioralConsistencyAnalyzer:
             
             # Validate and clamp temperature
             temperature = settings.get('temperature', 1.0)
-            if not isinstance(temperature, (int, float)) or temperature <= 0:
+            try:
+                temperature = float(temperature)
+                if temperature <= 0 or np.isnan(temperature) or np.isinf(temperature):
+                    temperature = 1.0
+                temperature = max(0.01, min(temperature, 2.0))  # Clamp to reasonable range
+            except (ValueError, TypeError):
                 temperature = 1.0
-            temperature = max(0.01, min(temperature, 2.0))  # Clamp to reasonable range
             
             # Validate max_length
             max_length = settings.get('max_length', self.config.max_response_length)
-            if not isinstance(max_length, int) or max_length <= 0:
+            try:
+                max_length = int(max_length)
+                if max_length <= 0:
+                    max_length = self.config.max_response_length
+                max_length = max(1, min(max_length, 2048))  # Reasonable bounds
+            except (ValueError, TypeError):
                 max_length = self.config.max_response_length
-            max_length = max(1, min(max_length, 2048))  # Reasonable bounds
             
             validated_context = {
                 'name': context.get('name', f'context_{i}'),
@@ -222,11 +246,15 @@ class BehavioralConsistencyAnalyzer:
                 else:
                     raise ValueError(f"Unsupported prompt type: {type(prompt)}")
                 
-                # FIXED: Only move tensors to device, handle mixed types safely
+                # FIXED: Safe device transfer - only move tensors to device, handle mixed types safely
                 inputs = {}
                 for k, v in enc.items():
                     if isinstance(v, torch.Tensor):
-                        inputs[k] = v.to(self.model.device)
+                        try:
+                            inputs[k] = v.to(self.model.device)
+                        except Exception as e:
+                            logger.warning(f"Failed to move {k} to device: {e}")
+                            inputs[k] = v
                     else:
                         inputs[k] = v
                         
@@ -236,7 +264,11 @@ class BehavioralConsistencyAnalyzer:
         else:
             # Handle raw tensor or string inputs
             if isinstance(prompt, torch.Tensor):
-                inputs = prompt.to(self.model.device)
+                try:
+                    inputs = prompt.to(self.model.device)
+                except Exception as e:
+                    logger.warning(f"Failed to move prompt to device: {e}")
+                    inputs = prompt
             elif isinstance(prompt, str):
                 # Model doesn't have tokenizer but got string input
                 raise ValueError("Model has no tokenizer but received string prompt")
@@ -255,14 +287,30 @@ class BehavioralConsistencyAnalyzer:
                         'pad_token_id': getattr(self.model.tokenizer, 'pad_token_id', None) if hasattr(self.model, 'tokenizer') else None
                     }
                     
-                    # Remove None values
-                    gen_kwargs = {k: v for k, v in gen_kwargs.items() if v is not None}
+                    # Remove None values and validate parameters
+                    validated_kwargs = {}
+                    for k, v in gen_kwargs.items():
+                        if v is not None:
+                            try:
+                                if k == 'temperature':
+                                    v = max(0.01, min(float(v), 2.0))
+                                elif k == 'max_length':
+                                    v = max(1, min(int(v), 2048))
+                                elif k == 'do_sample':
+                                    v = bool(v)
+                                validated_kwargs[k] = v
+                            except (ValueError, TypeError):
+                                logger.warning(f"Invalid generation parameter {k}: {v}")
                     
                     # Handle input format
                     if isinstance(inputs, dict):
-                        output = self.model.model.generate(**inputs, **gen_kwargs)
+                        output = self.model.model.generate(**inputs, **validated_kwargs)
                     else:
-                        output = self.model.model.generate(inputs, **gen_kwargs)
+                        output = self.model.model.generate(inputs, **validated_kwargs)
+                    
+                    # Validate output
+                    if not isinstance(output, torch.Tensor):
+                        raise ValueError(f"Model generate returned {type(output)}, expected torch.Tensor")
                     
                     # Decode if tokenizer available
                     if hasattr(self.model, 'tokenizer') and self.model.tokenizer:
@@ -318,32 +366,51 @@ class BehavioralConsistencyAnalyzer:
         
         metadata = {}
         
-        if 'text' in response:
-            text = response['text']
-            if isinstance(text, str):
-                words = text.split()
-                metadata.update({
-                    'text_length': len(text),
-                    'word_count': len(words),
-                    'avg_word_length': np.mean([len(word) for word in words]) if words else 0.0
-                })
-        
-        if 'logits' in response:
-            logits = response['logits']
-            if isinstance(logits, torch.Tensor) and logits.numel() > 0:
-                try:
+        try:
+            if 'text' in response:
+                text = response['text']
+                if isinstance(text, str):
+                    words = text.split()
                     metadata.update({
-                        'max_logit': float(torch.max(logits)),
-                        'min_logit': float(torch.min(logits)),
-                        'logit_entropy': float(-torch.sum(F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)))
+                        'text_length': len(text),
+                        'word_count': len(words),
+                        'avg_word_length': np.mean([len(word) for word in words]) if words else 0.0
                     })
-                except Exception as e:
-                    logger.warning(f"Failed to compute logit metadata: {e}")
+            
+            if 'logits' in response:
+                logits = response['logits']
+                if isinstance(logits, torch.Tensor) and logits.numel() > 0:
+                    try:
+                        # Check for NaN/Inf values
+                        if torch.isnan(logits).any() or torch.isinf(logits).any():
+                            logger.warning("NaN or Inf values in logits")
+                            valid_logits = logits[torch.isfinite(logits)]
+                            if valid_logits.numel() > 0:
+                                logits = valid_logits
+                            else:
+                                logger.warning("All logits are invalid")
+                                return metadata
+                        
+                        # Compute entropy safely
+                        probs = F.softmax(logits, dim=-1)
+                        log_probs = F.log_softmax(logits, dim=-1)
+                        entropy = -torch.sum(probs * log_probs)
+                        
+                        metadata.update({
+                            'max_logit': float(torch.max(logits)),
+                            'min_logit': float(torch.min(logits)),
+                            'logit_entropy': float(entropy) if not torch.isnan(entropy) else 0.0
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to compute logit metadata: {e}")
+            
+            if 'tokens' in response:
+                tokens = response['tokens']
+                if isinstance(tokens, torch.Tensor):
+                    metadata['token_count'] = int(tokens.numel())
         
-        if 'tokens' in response:
-            tokens = response['tokens']
-            if isinstance(tokens, torch.Tensor):
-                metadata['token_count'] = int(tokens.numel())
+        except Exception as e:
+            logger.warning(f"Metadata extraction failed: {e}")
         
         return metadata
     
