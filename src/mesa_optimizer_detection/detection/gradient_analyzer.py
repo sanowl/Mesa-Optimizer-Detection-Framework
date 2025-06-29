@@ -330,7 +330,7 @@ class GradientAnalyzer:
             
             # Compute variance with numerical stability
             diff_var = torch.var(diff)
-            
+            print(diff_var)                                                                                     
             # Handle potential NaN/Inf values
             if torch.isnan(diff_var) or torch.isinf(diff_var):
                 logger.warning("Invalid variance computed, using fallback")
