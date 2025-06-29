@@ -17,13 +17,16 @@ from contextlib import contextmanager
 import numpy as np
 
 from ..detection.gradient_analyzer import GradientAnalyzer
+from ..detection.gradient_invariant_analyzer import GradientInvariantAnalyzer
 from ..detection.activation_analyzer import ActivationPatternAnalyzer
 from ..detection.behavioral_analyzer import BehavioralConsistencyAnalyzer
 from ..detection.dynamics_monitor import OptimizationDynamicsMonitor
 from ..detection.causal_intervention import CausalInterventionAnalyzer
+from ..detection.behavioral_probe import SignalingGameProbe
 from ..utils.model_utils import ModelWrapper
 from ..config import DetectionConfig
 from .results import DetectionResults, RiskAssessment
+from ..calibration import DetectionCalibrator
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,7 @@ class MesaOptimizerDetector:
         detection_methods: List of detection methods to use
         config: Configuration object for detection parameters
         device: Device to run computations on
+        calibrator: Optional calibrator for calibrated analysis
     """
     
     def __init__(
@@ -51,7 +55,8 @@ class MesaOptimizerDetector:
         layer_indices: Optional[List[int]] = None,
         detection_methods: Optional[List[str]] = None,
         config: Optional[DetectionConfig] = None,
-        device: Optional[torch.device] = None
+        device: Optional[torch.device] = None,
+        calibrator: Optional[DetectionCalibrator] = None
     ):
         if not isinstance(model, (nn.Module, ModelWrapper)):
             raise TypeError("model must be a nn.Module or ModelWrapper instance")
@@ -65,6 +70,7 @@ class MesaOptimizerDetector:
             self.model = ModelWrapper(model, device=self.device)
             
         self.config = config or DetectionConfig()
+        self.calibrator = calibrator  # may be None
         
         # Validate and set layer indices
         try:
@@ -74,7 +80,7 @@ class MesaOptimizerDetector:
             self.layer_indices = [1, 2, 3]  # Safe fallback
         
         # Validate and set detection methods
-        available_methods = ['gradient', 'activation', 'behavioral', 'dynamics', 'causal']
+        available_methods = ['gradient', 'gradient_invariant', 'activation', 'behavioral', 'signaling', 'dynamics', 'causal']
         if detection_methods is None:
             self.detection_methods = available_methods
         else:
@@ -191,6 +197,16 @@ class MesaOptimizerDetector:
                 logger.error(f"Failed to initialize gradient analyzer: {e}")
                 initialization_errors.append('gradient')
                 
+        if 'gradient_invariant' in self.detection_methods:
+            try:
+                self.analyzers['gradient_invariant'] = GradientInvariantAnalyzer(
+                    model=self.model,
+                    config=self.config.gradient_config
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize gradient invariant analyzer: {e}")
+                initialization_errors.append('gradient_invariant')
+                
         if 'activation' in self.detection_methods:
             try:
                 self.analyzers['activation'] = ActivationPatternAnalyzer(
@@ -211,6 +227,16 @@ class MesaOptimizerDetector:
             except Exception as e:
                 logger.error(f"Failed to initialize behavioral analyzer: {e}")
                 initialization_errors.append('behavioral')
+                
+        if 'signaling' in self.detection_methods:
+            try:
+                self.analyzers['signaling'] = SignalingGameProbe(
+                    model=self.model,
+                    config=self.config.behavioral_config
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize signaling probe: {e}")
+                initialization_errors.append('signaling')
                 
         if 'dynamics' in self.detection_methods:
             try:
@@ -301,6 +327,10 @@ class MesaOptimizerDetector:
                             result = self.analyzers['gradient'].analyze(
                                 input_tensor, baseline_gradients
                             )
+                        elif method == 'gradient_invariant':
+                            result = self.analyzers['gradient_invariant'].analyze(
+                                input_tensor
+                            )
                         elif method == 'activation':
                             result = self.analyzers['activation'].analyze(
                                 input_tensor
@@ -308,6 +338,9 @@ class MesaOptimizerDetector:
                         elif method == 'behavioral':
                             contexts = evaluation_contexts or self._create_default_contexts(input_tensor)
                             result = self.analyzers['behavioral'].analyze(contexts)
+                        elif method == 'signaling':
+                            contexts = evaluation_contexts or self._create_default_contexts(input_tensor)
+                            result = self.analyzers['signaling'].analyze(contexts)
                         elif method == 'dynamics':
                             if training_step is not None:
                                 result = self.analyzers['dynamics'].analyze(training_step)
@@ -335,6 +368,15 @@ class MesaOptimizerDetector:
                 # Aggregate results and compute risk assessment
                 detection_results = self._aggregate_results(results)
                 
+                # Optional calibration step
+                if self.calibrator is not None and getattr(self.calibrator, "_fitted", False):
+                    try:
+                        p_mesa = self.calibrator.predict_proba(detection_results)
+                        detection_results.metadata = detection_results.metadata or {}
+                        detection_results.metadata["calibrated_probability"] = p_mesa
+                    except Exception as e:
+                        logger.warning(f"Calibration failed: {e}")
+                
                 logger.info(f"Analysis complete. Risk score: {detection_results.risk_score:.3f}")
                 return detection_results
                 
@@ -345,7 +387,7 @@ class MesaOptimizerDetector:
     def _get_analysis_order(self) -> List[str]:
         """Get analysis order based on computational cost."""
         # Order from cheapest to most expensive
-        cost_order = ['behavioral', 'activation', 'dynamics', 'gradient', 'causal']
+        cost_order = ['behavioral', 'signaling', 'activation', 'dynamics', 'gradient', 'gradient_invariant', 'causal']
         return [method for method in cost_order if method in self.detection_methods]
     
     def _create_empty_result(self) -> DetectionResults:
@@ -585,10 +627,14 @@ class MesaOptimizerDetector:
                     if hasattr(result, 'risk_score') and result.risk_score > 0.7:
                         if method == 'gradient':
                             recommendations.append("Gradient anomalies detected - review training stability and optimization process.")
+                        elif method == 'gradient_invariant':
+                            recommendations.append("Gradient invariant anomalies detected - investigate model internals for optimization circuits.")
                         elif method == 'activation':
                             recommendations.append("Suspicious activation patterns found - analyze model internals for optimization circuits.")
                         elif method == 'behavioral':
                             recommendations.append("Behavioral inconsistencies detected - test model across diverse contexts.")
+                        elif method == 'signaling':
+                            recommendations.append("Signaling game anomalies detected - investigate model decision-making processes.")
                         elif method == 'dynamics':
                             recommendations.append("Optimization dynamics anomalies - monitor training trajectory and learning dynamics.")
                         elif method == 'causal':
@@ -722,4 +768,18 @@ class MesaOptimizerDetector:
             
         except Exception as e:
             logger.error(f"Failed to generate detection summary: {e}")
-            return {'error': str(e)} 
+            return {'error': str(e)}
+
+    # ------------------------------------------------------------------
+    # Convenience wrapper
+    # ------------------------------------------------------------------
+    def calibrated_analyze(
+        self,
+        *args,
+        **kwargs,
+    ) -> DetectionResults:
+        """Run analyze() and ensure calibrated probability is attached.
+
+        If no calibrator is set / fitted the output is identical to analyze().
+        """
+        return self.analyze(*args, **kwargs) 

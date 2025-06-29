@@ -20,6 +20,8 @@ from .detection.activation_analyzer import ActivationPatternAnalyzer
 from .detection.behavioral_analyzer import BehavioralConsistencyAnalyzer
 from .detection.dynamics_monitor import OptimizationDynamicsMonitor
 from .detection.causal_intervention import CausalInterventionAnalyzer
+from .detection.gradient_invariant_analyzer import GradientInvariantAnalyzer
+from .detection.behavioral_probe import SignalingGameProbe
 
 # Utilities
 from .utils.model_utils import ModelWrapper, extract_activations
@@ -36,6 +38,7 @@ from .config import (
 )
 
 from .theory.taxonomy import OptimizerClass
+from .calibration import DetectionCalibrator
 
 __all__ = [
     # Core
@@ -46,10 +49,12 @@ __all__ = [
     # Detection methods
     "GradientAnalyzer",
     "GradientAnomalyDetector", 
+    "GradientInvariantAnalyzer",
     "ActivationPatternAnalyzer",
     "BehavioralConsistencyAnalyzer",
     "OptimizationDynamicsMonitor",
     "CausalInterventionAnalyzer",
+    "SignalingGameProbe",
     
     # Utilities
     "ModelWrapper",
@@ -64,4 +69,5 @@ __all__ = [
     "create_permissive_config", 
     "create_research_config",
     "OptimizerClass",
+    "DetectionCalibrator",
 ] 

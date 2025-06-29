@@ -202,6 +202,20 @@ class ModelWrapper:
             logger.warning(f"Failed to count parameters: {e}")
             return 0
 
+    def eval(self) -> "ModelWrapper":
+        """Set underlying model to evaluation mode and return self for chaining."""
+        self.model.eval()
+        return self
+
+    def train(self) -> "ModelWrapper":
+        """Set underlying model to training mode and return self for chaining."""
+        self.model.train()
+        return self
+
+    def zero_grad(self, set_to_none: bool = False) -> None:
+        """Clear gradients of the underlying model parameters."""
+        self.model.zero_grad(set_to_none=set_to_none)
+
 
 def extract_activations(
     model: Union[nn.Module, ModelWrapper],

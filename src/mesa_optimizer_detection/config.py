@@ -80,6 +80,7 @@ class GradientConfig:
     min_samples_for_analysis: int = 5  # Minimum samples needed for reliable analysis
     outlier_rejection_threshold: float = 3.0  # Standard deviations for outlier rejection
     smoothing_factor: float = 0.3  # Exponential smoothing for gradient history
+    fisher_drift_threshold: float = 0.05  # Relative drift threshold for Fisher trace invariance
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -125,6 +126,12 @@ class GradientConfig:
             logger.warning(f"Invalid smoothing_factor: {self.smoothing_factor}, using 0.3")
             self.smoothing_factor = 0.3
         self.smoothing_factor = max(0.0, min(1.0, float(self.smoothing_factor)))
+        
+        # Validate fisher_drift_threshold
+        if not isinstance(self.fisher_drift_threshold, (int, float)) or self.fisher_drift_threshold <= 0:
+            logger.warning(f"Invalid fisher_drift_threshold: {self.fisher_drift_threshold}, using 0.05")
+            self.fisher_drift_threshold = 0.05
+        self.fisher_drift_threshold = max(1e-4, min(1.0, float(self.fisher_drift_threshold)))
 
 
 @dataclass
@@ -442,9 +449,11 @@ class DetectionConfig:
     method_weights: Dict[str, float] = field(default_factory=lambda: {
         'gradient': 0.8,      # Reduced weight due to high false positive rate
         'activation': 1.2,    # Increased weight as it's more specific
+        'gradient_invariant': 0.8,  # New method weight similar to gradient
         'behavioral': 1.0,    # Standard weight
         'dynamics': 0.6,      # Reduced weight due to noise
-        'causal': 1.4         # Highest weight as it's most reliable
+        'causal': 1.4,        # Highest weight as it's most reliable
+        'signaling': 1.0,     # Behavioral signaling-game probe
     })
     
     # Enhanced global settings
@@ -470,9 +479,11 @@ class DetectionConfig:
                 self.method_weights = {
                     'gradient': 0.8,
                     'activation': 1.2,
+                    'gradient_invariant': 0.8,
                     'behavioral': 1.0,
                     'dynamics': 0.6,
-                    'causal': 1.4
+                    'causal': 1.4,
+                    'signaling': 1.0,
                 }
             
             # Validate and clamp weight values
@@ -532,9 +543,11 @@ class DetectionConfig:
         self.method_weights = {
             'gradient': 0.8,
             'activation': 1.2,
+            'gradient_invariant': 0.8,
             'behavioral': 1.0,
             'dynamics': 0.6,
-            'causal': 1.4
+            'causal': 1.4,
+            'signaling': 1.0,
         }
         self.device = None
         self.random_seed = 42
@@ -676,9 +689,11 @@ class DetectionConfig:
                 method_weights = {
                     'gradient': 0.8,
                     'activation': 1.2,
+                    'gradient_invariant': 0.8,
                     'behavioral': 1.0,
                     'dynamics': 0.6,
-                    'causal': 1.4
+                    'causal': 1.4,
+                    'signaling': 1.0,
                 }
             
             return cls(

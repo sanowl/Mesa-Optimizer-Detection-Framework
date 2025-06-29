@@ -92,8 +92,10 @@ class GradientAnalysisResult:
     """Results from gradient-based mesa-optimization detection."""
     gradient_variance: float = 0.0
     anomaly_score: float = 0.0
+    invariant_violation_score: float = 0.0
     hessian_eigenvalues: Optional[torch.Tensor] = None
     gradient_directions: Optional[torch.Tensor] = None
+    fisher_info_trace: Optional[torch.Tensor] = None
     risk_score: float = 0.0
     confidence: float = 0.0
     
@@ -108,6 +110,7 @@ class GradientAnalysisResult:
             # Validate scalar values
             self.gradient_variance = max(0.0, float(self.gradient_variance))
             self.anomaly_score = max(0.0, min(1.0, float(self.anomaly_score)))
+            self.invariant_violation_score = max(0.0, min(1.0, float(self.invariant_violation_score)))
             self.risk_score = max(0.0, min(1.0, float(self.risk_score)))
             self.confidence = max(0.0, min(1.0, float(self.confidence)))
             
@@ -119,6 +122,10 @@ class GradientAnalysisResult:
             if self.gradient_directions is not None and not isinstance(self.gradient_directions, torch.Tensor):
                 logger.warning("Invalid gradient_directions type, setting to None")
                 self.gradient_directions = None
+            
+            if self.fisher_info_trace is not None and not isinstance(self.fisher_info_trace, torch.Tensor):
+                logger.warning("Invalid fisher_info_trace type, setting to None")
+                self.fisher_info_trace = None
                 
         except Exception as e:
             logger.error(f"Gradient result validation failed: {e}")
@@ -128,8 +135,10 @@ class GradientAnalysisResult:
         """Reset to safe default values."""
         self.gradient_variance = 0.0
         self.anomaly_score = 0.0
+        self.invariant_violation_score = 0.0
         self.hessian_eigenvalues = None
         self.gradient_directions = None
+        self.fisher_info_trace = None
         self.risk_score = 0.0
         self.confidence = 0.0
     
@@ -140,10 +149,12 @@ class GradientAnalysisResult:
                 result = {
                     'gradient_variance': float(self.gradient_variance),
                     'anomaly_score': float(self.anomaly_score),
+                    'invariant_violation_score': float(self.invariant_violation_score),
                     'risk_score': float(self.risk_score),
                     'confidence': float(self.confidence),
                     'hessian_eigenvalues': _safe_tensor_to_json(self.hessian_eigenvalues) if self.hessian_eigenvalues is not None else None,
-                    'gradient_directions': _safe_tensor_to_json(self.gradient_directions) if self.gradient_directions is not None else None
+                    'gradient_directions': _safe_tensor_to_json(self.gradient_directions) if self.gradient_directions is not None else None,
+                    'fisher_info_trace': _safe_tensor_to_json(self.fisher_info_trace) if self.fisher_info_trace is not None else None
                 }
                 return result
             except Exception as e:
