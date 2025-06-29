@@ -35,6 +35,8 @@ from .config import (
     create_research_config
 )
 
+from .theory.taxonomy import OptimizerClass
+
 __all__ = [
     # Core
     "MesaOptimizerDetector",
@@ -61,4 +63,5 @@ __all__ = [
     "create_conservative_config",
     "create_permissive_config", 
     "create_research_config",
+    "OptimizerClass",
 ] 

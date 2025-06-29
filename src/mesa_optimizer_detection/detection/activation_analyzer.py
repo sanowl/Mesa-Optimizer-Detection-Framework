@@ -16,6 +16,7 @@ import logging
 from ..core.results import ActivationAnalysisResult
 from ..utils.model_utils import ModelWrapper, extract_activations, detect_planning_patterns, analyze_optimization_circuits
 from ..config import ActivationConfig
+from ..utils.mi import estimate_mutual_information
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,13 @@ class ActivationPatternAnalyzer:
         
         logger.info(f"ActivationPatternAnalyzer initialized for layers: {self.target_layers}")
     
-    def analyze(self, input_batch: torch.Tensor) -> ActivationAnalysisResult:
+    def analyze(self, input_batch: torch.Tensor, future_loss_deltas: Optional[torch.Tensor] = None) -> ActivationAnalysisResult:
         """
         Analyze activation patterns for mesa-optimization indicators.
         
         Args:
             input_batch: Input data to analyze
+            future_loss_deltas: Optional future loss deltas for mutual information computation
             
         Returns:
             ActivationAnalysisResult containing analysis results
@@ -82,6 +84,9 @@ class ActivationPatternAnalyzer:
         # Detect suspicious patterns
         suspicious_patterns = self._detect_suspicious_patterns(activations)
         
+        # Compute mutual information between activations and future loss deltas or model outputs
+        mi_score = self._compute_mi_score(activations, input_batch, future_loss_deltas)
+        
         # Compute overall risk score
         risk_score = self._compute_risk_score(
             planning_score, goal_directedness, optimization_score
@@ -97,7 +102,10 @@ class ActivationPatternAnalyzer:
             circuit_activations=activations,
             suspicious_patterns=suspicious_patterns,
             risk_score=risk_score,
-            confidence=confidence
+            confidence=confidence,
+            activation_statistics={
+                "mi_score": mi_score,
+            },
         )
         
         logger.debug(f"Activation analysis complete. Risk score: {risk_score:.3f}")
@@ -359,6 +367,36 @@ class ActivationPatternAnalyzer:
                 confidence_factors.append(consistency)
         
         return float(np.mean(confidence_factors)) if confidence_factors else 0.5
+
+    def _compute_mi_score(
+        self,
+        activations: Dict[str, torch.Tensor],
+        input_batch: torch.Tensor,
+        future_loss_deltas: Optional[torch.Tensor] = None,
+    ) -> float:
+        """Compute average mutual information between each layer activation and the
+        chosen target variable.
+
+        If `future_loss_deltas` is provided (shape `[batch, ...]`) we flatten it and
+        compute MI against that. Otherwise we default to using the model's output
+        logits on the *current* batch as the target.
+        """
+        # Decide target variable Y
+        if future_loss_deltas is not None:
+            target = future_loss_deltas.detach()
+        else:
+            # Forward pass to obtain logits (no grad)
+            with torch.no_grad():
+                target = self.model(input_batch)
+        
+        # Flatten target to 1-D tensor
+        target_flat = target.detach().reshape(-1)
+        mi_values = []
+        for activation in activations.values():
+            act_flat = activation.detach().reshape(-1)
+            mi = estimate_mutual_information(act_flat, target_flat)
+            mi_values.append(mi)
+        return float(np.mean(mi_values)) if mi_values else 0.0
 
 
 class CircuitAnalyzer:

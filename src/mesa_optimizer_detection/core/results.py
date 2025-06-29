@@ -155,9 +155,13 @@ class GradientAnalysisResult:
 class ActivationAnalysisResult:
     """Results from activation pattern analysis."""
     planning_score: float = 0.0
+    goal_directedness: float = 0.0
     optimization_score: float = 0.0
+    circuit_activations: Optional[Dict[str, 'torch.Tensor']] = None  # raw activations (optional large)
     circuit_patterns: Optional[List[str]] = None
+    suspicious_patterns: Optional[List[str]] = None
     activation_statistics: Optional[Dict[str, float]] = None
+    hypothesised_class: Optional[str] = None  # taxonomy label, see OptimizerClass
     risk_score: float = 0.0
     confidence: float = 0.0
     
@@ -175,6 +179,9 @@ class ActivationAnalysisResult:
             self.risk_score = max(0.0, min(1.0, float(self.risk_score)))
             self.confidence = max(0.0, min(1.0, float(self.confidence)))
             
+            # Validate goal_directedness
+            self.goal_directedness = max(0.0, min(1.0, float(self.goal_directedness)))
+            
             # Validate circuit patterns
             if self.circuit_patterns is not None:
                 if not isinstance(self.circuit_patterns, list):
@@ -183,6 +190,19 @@ class ActivationAnalysisResult:
                 else:
                     # Ensure all patterns are strings
                     self.circuit_patterns = [str(p) for p in self.circuit_patterns if p is not None]
+            
+            # Validate suspicious patterns list
+            if self.suspicious_patterns is not None:
+                if not isinstance(self.suspicious_patterns, list):
+                    logger.warning("Invalid suspicious_patterns type, setting to None")
+                    self.suspicious_patterns = None
+                else:
+                    self.suspicious_patterns = [str(p) for p in self.suspicious_patterns if p is not None]
+            
+            # Validate hypothesised_class (string value)
+            if self.hypothesised_class is not None and not isinstance(self.hypothesised_class, str):
+                logger.warning("Invalid hypothesised_class type, setting to None")
+                self.hypothesised_class = None
             
             # Validate activation statistics
             if self.activation_statistics is not None:
@@ -211,6 +231,9 @@ class ActivationAnalysisResult:
         self.activation_statistics = None
         self.risk_score = 0.0
         self.confidence = 0.0
+        self.goal_directedness = 0.0
+        self.suspicious_patterns = None
+        self.hypothesised_class = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -218,9 +241,13 @@ class ActivationAnalysisResult:
             try:
                 return {
                     'planning_score': float(self.planning_score),
+                    'goal_directedness': float(self.goal_directedness),
                     'optimization_score': float(self.optimization_score),
+                    'circuit_activations': {ln: _safe_tensor_to_json(act) for ln, act in self.circuit_activations.items()} if isinstance(self.circuit_activations, dict) else None,
                     'circuit_patterns': self.circuit_patterns.copy() if self.circuit_patterns else None,
+                    'suspicious_patterns': self.suspicious_patterns.copy() if self.suspicious_patterns else None,
                     'activation_statistics': self.activation_statistics.copy() if self.activation_statistics else None,
+                    'hypothesised_class': self.hypothesised_class,
                     'risk_score': float(self.risk_score),
                     'confidence': float(self.confidence)
                 }
@@ -603,6 +630,14 @@ class DetectionResults:
         except Exception:
             return "MINIMAL"
     
+    @property
+    def confidence(self) -> float:
+        """Convenience property exposing overall confidence."""
+        try:
+            return float(self.risk_assessment.confidence)
+        except Exception:
+            return 0.0
+    
     def get_method_result(self, method: str) -> Optional[Any]:
         """Get result for specific method."""
         try:
@@ -701,6 +736,26 @@ class DetectionResults:
         except Exception as e:
             logger.error(f"Failed to generate summary: {e}")
             return {'error': str(e)}
+
+    def save(self, path: str) -> None:
+        """Save results to *path* as JSON."""
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.to_json(indent=2))
+        except Exception as e:
+            logger.error(f"Failed to save DetectionResults to {path}: {e}")
+    
+    @classmethod
+    def load(cls, path: str) -> "DetectionResults":
+        """Load DetectionResults from a JSON file located at *path*."""
+        import json
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return cls.from_dict(data)
+        except Exception as e:
+            logger.error(f"Failed to load DetectionResults from {path}: {e}")
+            return cls()
 
 
 @dataclass

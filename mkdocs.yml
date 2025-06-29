@@ -1,0 +1,13 @@
+site_name: Mesa-Optimizer Detection (Prototype)
+docs_dir: docs
+site_url: https://example.com/
+nav:
+  - Home: index.md
+  - README: ../README.md
+theme:
+  name: material
+  palette:
+    scheme: slate
+markdown_extensions:
+  - admonition
+  - tables 

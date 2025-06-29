@@ -140,6 +140,11 @@ class ActivationConfig:
     statistical_significance_threshold: float = 0.05  # P-value threshold
     cross_validation_folds: int = 5  # Cross-validation for pattern detection
     
+    # Thresholds for higher-level risk components
+    planning_threshold: float = 0.3  # default for planning score risk
+    goal_threshold: float = 0.3      # default for goal-directedness risk
+    optimization_threshold: float = 0.3  # default for optimization circuit risk
+    
     def __post_init__(self):
         """Validate configuration after initialization."""
         self._validate_config()
@@ -185,6 +190,15 @@ class ActivationConfig:
             logger.warning(f"Invalid cross_validation_folds: {self.cross_validation_folds}, using 5")
             self.cross_validation_folds = 5
         self.cross_validation_folds = max(2, min(20, self.cross_validation_folds))
+        
+        # Validate new high-level thresholds
+        for name in ("planning_threshold", "goal_threshold", "optimization_threshold"):
+            val = getattr(self, name, 0.3)
+            if not isinstance(val, (int, float)):
+                logger.warning(f"Invalid {name}: {val}, using 0.3")
+                setattr(self, name, 0.3)
+            else:
+                setattr(self, name, max(0.0, min(1.0, float(val))))
 
 
 @dataclass
@@ -757,6 +771,41 @@ class DetectionConfig:
         except Exception as e:
             logger.error(f"Failed to generate config summary: {e}")
             return {'error': str(e)}
+
+    def validate(self) -> bool:
+        """Validate config and raise ValueError on critical inconsistencies."""
+        # Check thresholds first – if invalid, raise prior to auto-correction
+        if not (0.0 <= self.risk_thresholds.low <= self.risk_thresholds.medium <= self.risk_thresholds.high <= 1.0):
+            raise ValueError("Risk thresholds are not properly ordered.")
+        # Run deeper validation which may clamp / adjust other fields
+        self._validate_config()
+        return True
+    
+    def save(self, path: str) -> None:
+        """Save the configuration to *path* as a JSON file.
+
+        YAML is not a hard dependency; JSON is universally supported and keeps
+        the implementation lightweight. Any caller expecting YAML can easily
+        load the JSON as well.
+        """
+        import json
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.to_dict(), f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save DetectionConfig to {path}: {e}")
+
+    @classmethod
+    def load(cls, path: str) -> "DetectionConfig":
+        """Load a configuration from a JSON file saved via `save()`."""
+        import json
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return cls.from_dict(data)
+        except Exception as e:
+            logger.error(f"Failed to load DetectionConfig from {path}: {e}")
+            return cls()
 
 
 # Configuration factory functions
