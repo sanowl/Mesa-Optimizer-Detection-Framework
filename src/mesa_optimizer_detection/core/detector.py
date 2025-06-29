@@ -14,6 +14,7 @@ import warnings
 import gc
 import threading
 from contextlib import contextmanager
+import numpy as np
 
 from ..detection.gradient_analyzer import GradientAnalyzer
 from ..detection.activation_analyzer import ActivationPatternAnalyzer
@@ -423,7 +424,14 @@ class MesaOptimizerDetector:
                 logger.warning("No valid method scores found")
                 return self._create_empty_result()
             
-            # Compute weighted average risk score
+            # NEW: determine per-method detection flags for consensus logic
+            detection_flags = {
+                m: (s >= self.config.risk_thresholds.medium) for m, s in method_scores.items()
+            }
+            methods_flagged = [m for m, flag in detection_flags.items() if flag]
+            consensus_ratio = len(methods_flagged) / len(method_scores)
+            
+            # Compute weighted average risk score (before possible consensus adjustment)
             total_weight = 0.0
             weighted_sum = 0.0
             
@@ -445,11 +453,28 @@ class MesaOptimizerDetector:
             # Ensure score is in valid range
             overall_risk_score = max(0.0, min(1.0, overall_risk_score))
             
-            # Compute overall confidence
-            confidence = self._compute_confidence(valid_results)
+            # NEW: consensus-based adjustment
+            if self.config.require_multiple_methods:
+                if (len(methods_flagged) < self.config.min_methods_for_detection) or (
+                    consensus_ratio < self.config.consensus_threshold):
+                    # Penalize risk score due to insufficient consensus
+                    overall_risk_score *= 0.5  # Simple down-weight, could be made configurable
+                    logger.debug(
+                        f"Consensus not reached (flagged: {len(methods_flagged)}, ratio: {consensus_ratio:.2f}). "
+                        f"Risk score down-weighted to {overall_risk_score:.3f}"
+                    )
             
-            # Determine risk level
+            # Re-compute risk level after consensus adjustment
             risk_level = self._compute_risk_level(overall_risk_score)
+            
+            # NEW: simple uncertainty estimation (std of method scores)
+            uncertainty = float(np.std(list(method_scores.values()))) if len(method_scores) > 1 else 0.5
+            
+            # Compute overall confidence (existing method)
+            confidence = self._compute_confidence(valid_results)
+            # Adjust confidence by uncertainty (higher uncertainty -> lower confidence)
+            confidence = confidence * (1.0 - uncertainty)
+            confidence = max(0.0, min(1.0, confidence))
             
             # Generate recommendations
             recommendations = self._generate_recommendations(overall_risk_score, valid_results)
@@ -469,7 +494,10 @@ class MesaOptimizerDetector:
                 'total_methods_attempted': len(results),
                 'analysis_timestamp': self._get_timestamp(),
                 'device': str(self.device),
-                'layer_indices': self.layer_indices
+                'layer_indices': self.layer_indices,
+                'methods_flagged': methods_flagged,
+                'consensus_ratio': consensus_ratio,
+                'uncertainty': uncertainty,
             }
             
             return DetectionResults(

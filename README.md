@@ -2,6 +2,12 @@
 
 ## Executive Summary
 
+**Status = Research Prototype**  
+This repository is an *experimental* playground for mesa-optimizer–detection ideas.  
+It implements several plausible signals (gradients, activations, behavioural probes, causal interventions) **but has *not* been validated on real deceptive models**—because such models do not yet exist in the public domain.  Use it to prototype methods, run toy benchmarks and build intuition, **not** to make deployment-critical safety decisions.
+
+In short: *it's code for a hard open research problem, not a production detector.*
+
 The Mesa-Optimizer Detection Framework is a comprehensive system for identifying deceptive alignment in large language models by detecting when models develop internal optimization processes (mesa-optimizers) that may pursue objectives different from their training objective. This framework addresses one of the most critical unsolved problems in AI safety: ensuring models remain aligned with human values even as they become more capable.
 
 ## Problem Statement
@@ -70,13 +76,21 @@ print(f"Detection confidence: {results.confidence}")
 4. **Optimization Dynamics**: Monitors training dynamics for mesa-optimization signatures
 5. **Causal Interventions**: Uses targeted ablations to test for deceptive alignment
 
-### Key Features
+### Current Capabilities
 
-- **Multi-Scale Detection**: Works on models from GPT-2 to 70B+ parameters
-- **Real-Time Monitoring**: Continuous evaluation during training and inference
-- **Adversarial Robustness**: Designed to detect sophisticated deception attempts
-- **Interpretable Results**: Detailed explanations of detection decisions
-- **Extensible Architecture**: Easy to add new detection methods
+* Modular analysers: gradient, activation-pattern, behavioural, dynamics, causal-intervention.  
+* Configurable risk aggregation with consensus & uncertainty estimates.  
+* Demo & benchmark scripts for small/medium PyTorch models on a single GPU/CPU.  
+* Extensible architecture—new detection methods can be dropped in.
+
+### What it *doesn't* guarantee (yet)
+
+* Reliable operation on models larger than a few billion parameters—the memory/latency cost hasn't been optimised.  
+* Robustness against an adaptive adversary; many heuristics can be evaded.  
+* Low false-positive/false-negative rates—no ground-truth dataset exists.  
+* Out-of-the-box "real-time" monitoring during a production training run.
+
+Help wanted! See the *Roadmap* section below.
 
 ## Research Applications
 
@@ -101,8 +115,6 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 ## License
 
 This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
-
-
 
 ## Acknowledgments
 
