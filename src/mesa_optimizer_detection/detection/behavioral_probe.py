@@ -1,4 +1,5 @@
 from __future__ import annotations
+import secrets
 
 """Behavioral Signaling-Game Probe
 
@@ -14,7 +15,6 @@ Future versions should replace the heuristics with real evaluation logic.
 
 from typing import List, Dict, Any, Optional
 import logging
-import random
 
 import torch
 
@@ -46,12 +46,12 @@ class SignalingGameProbe:
         and *context-sensitivity* score to keep the placeholder deterministic
         for a fixed random seed (42).
         """
-        random.seed(42)
+        secrets.SystemRandom().seed(42)
         torch.manual_seed(42)
 
         # Placeholder logic: low variance, low risk
-        consistency_score = 0.2 + random.random() * 0.1  # 0.2-0.3
-        context_sensitivity = 0.2 + random.random() * 0.1
+        consistency_score = 0.2 + secrets.SystemRandom().random() * 0.1  # 0.2-0.3
+        context_sensitivity = 0.2 + secrets.SystemRandom().random() * 0.1
         deception_indicators: List[str] = []  # none detected in stub
 
         risk_score = max(consistency_score, context_sensitivity) * 0.3  # keep low
