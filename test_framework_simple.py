@@ -31,39 +31,39 @@ def test_activation_analysis():
     print("🧪 Testing Mesa-Optimizer Detection (Activation Analysis)")
     print("=" * 60)
     
-    # Create a simple model
-    print("📝 Creating test model...")
-    model = SimpleTestModel()
-    print(f"✅ Model created with {sum(p.numel() for p in model.parameters()):,} parameters")
-    
-    # Create test data
-    print("📊 Creating test data...")
-    batch_size = 4
-    input_size = 10
-    test_data = torch.randn(batch_size, input_size)
-    print(f"✅ Test data created: {test_data.shape}")
-    
-    # Create detection configuration
-    print("⚙️ Setting up detection configuration...")
-    config = create_default_config()
-    print("✅ Configuration created")
-    
-    # Initialize detector with only activation analysis
-    print("🕵️ Initializing detector...")
-    layer_indices = [1, 3]  # Analyze specific layers
-    detection_methods = ['activation']  # Only use activation analysis
-    
-    detector = MesaOptimizerDetector(
-        model=model,
-        layer_indices=layer_indices,
-        detection_methods=detection_methods,
-        config=config
-    )
-    print(f"✅ Detector initialized with methods: {detection_methods}")
-    
-    # Run analysis
-    print("🔍 Running mesa-optimization analysis...")
     try:
+        # Create a simple model
+        print("📝 Creating test model...")
+        model = SimpleTestModel()
+        print(f"✅ Model created with {sum(p.numel() for p in model.parameters()):,} parameters")
+        
+        # Create test data
+        print("📊 Creating test data...")
+        batch_size = 4
+        input_size = 10
+        test_data = torch.randn(batch_size, input_size)
+        print(f"✅ Test data created: {test_data.shape}")
+        
+        # Create detection configuration
+        print("⚙️ Setting up detection configuration...")
+        config = create_default_config()
+        print("✅ Configuration created")
+        
+        # Initialize detector with only activation analysis
+        print("🕵️ Initializing detector...")
+        layer_indices = [1, 3]  # Analyze specific layers
+        detection_methods = ['activation']  # Only use activation analysis
+        
+        detector = MesaOptimizerDetector(
+            model=model,
+            layer_indices=layer_indices,
+            detection_methods=detection_methods,
+            config=config
+        )
+        print(f"✅ Detector initialized with methods: {detection_methods}")
+        
+        # Run analysis
+        print("🔍 Running mesa-optimization analysis...")
         results = detector.analyze(test_data)
         
         print("\n📋 Analysis Results:")
@@ -81,6 +81,8 @@ def test_activation_analysis():
             print(f"  {i}. {rec}")
         
         print("\n✅ Analysis completed successfully!")
+        assert 0.0 <= results.risk_score <= 1.0
+        assert 0.0 <= results.confidence <= 1.0
         return True
         
     except Exception as e:
@@ -111,7 +113,7 @@ def test_model_wrapper():
         activations = wrapper.get_activations(test_input, layer_indices=[1, 3])
         print(f"✅ Activation extraction works")
         print(f"   Extracted activations for {len(activations)} layers")
-        
+        assert len(activations) == 2
         return True
         
     except Exception as e:
@@ -144,7 +146,7 @@ def test_individual_analyzers():
         print(f"✅ Activation analyzer works")
         print(f"   Risk score: {result.risk_score:.3f}")
         print(f"   Confidence: {result.confidence:.3f}")
-        
+        assert 0.0 <= result.risk_score <= 1.0
         return True
         
     except Exception as e:
@@ -157,17 +159,15 @@ if __name__ == "__main__":
     print("🚀 Mesa-Optimizer Detection Framework - Simple Tests\n")
     
     # Run tests
-    test_results = []
-    
-    test_results.append(test_activation_analysis())
-    test_results.append(test_model_wrapper())
-    test_results.append(test_individual_analyzers())
+    test_activation_analysis()
+    test_model_wrapper()
+    test_individual_analyzers()
     
     # Summary
     print("\n📈 Test Summary")
     print("=" * 60)
-    passed = sum(test_results)
-    total = len(test_results)
+    passed = sum([test_activation_analysis(), test_model_wrapper(), test_individual_analyzers()])
+    total = 3
     print(f"Tests passed: {passed}/{total}")
     
     if passed == total:
